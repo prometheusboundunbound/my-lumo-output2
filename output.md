@@ -1,4 +1,109 @@
 
+import sys
+import re
+import unicodedata
+import requests
+from bs4 import BeautifulSoup
+
+
+def normalize_greek(text):
+    return unicodedata.normalize("NFC", text)
+
+def get_bailly_entry(word):
+    url = f"https://logeion.uchicago.edu/{word}"
+    response = requests.get(url)
+    if response.status_code != 200:
+        return None
+    soup = BeautifulSoup(response.text, "html.parser")
+    bailly_header = soup.find("h3", string=lambda s: s and "Bailly 2024" in s)
+    if not bailly_header:
+        return None
+    bailly_div = bailly_header.find_next("div")
+    if not bailly_div:
+        return None
+    return bailly_div.get_text(separator="\n").strip()
+
+def extract_greek_from_etym(bailly_text):
+    greek_words = set()
+    etym_match = re.search(r"Etym\.(.*?)(?:\n[A-Z]|$)", bailly_text, re.S)
+    if not etym_match:
+        return greek_words
+    etym_text = etym_match.group(1)
+    greek_pattern = r"[ἀ-῾Α-Ωα-ω]+"
+    for w in re.findall(greek_pattern, etym_text):
+        greek_words.add(normalize_greek(w))
+    return greek_words
+
+def get_wiktionary_etymology(word):
+    url = f"https://en.wiktionary.org/wiki/{word}"
+    response = requests.get(url)
+    if response.status_code != 200:
+        return None
+    soup = BeautifulSoup(response.text, "html.parser")
+    etym_text = ""
+    in_ancient_greek = False
+    in_etymology = False
+    for tag in soup.find_all(["h2", "h3"]):
+        if tag.name == "h2" and "Ancient Greek" in tag.get_text():
+            in_ancient_greek = True
+            continue
+        if in_ancient_greek and tag.name == "h3" and "Etymology" in tag.get_text():
+            in_etymology = True
+            continue
+        if in_ancient_greek and in_etymology:
+            if tag.name in ["h2", "h3"]:
+                break
+            next_node = tag.find_next_sibling()
+            if next_node:
+                etym_text += next_node.get_text(separator="\n")
+    return etym_text.strip() if etym_text else None
+
+def append_to_file(text, filename="filebailly.txt"):
+    with open(filename, "a", encoding="utf-8") as f:
+        f.write(text + "\n\n")
+
+visited = set()
+
+def process_word(word):
+    word = normalize_greek(word)
+    if word in visited:
+        return
+    visited.add(word)
+
+    print(f"\n=== PROCESSING {word} ===\n")
+
+    bailly = get_bailly_entry(word)
+    if bailly:
+        print(f"=== BAILLY 2024 ENTRY FOR {word} ===\n{bailly}\n")
+        append_to_file(f"=== BAILLY 2024 ENTRY FOR {word} ===\n{bailly}")
+        greek_words = extract_greek_from_etym(bailly)
+        for g in greek_words:
+            process_word(g)
+
+    wikietym = get_wiktionary_etymology(word)
+    if wikietym:
+        print(f"=== WIKTIONARY ETYMOLOGY FOR {word} ===\n{wikietym}\n")
+        append_to_file(f"=== WIKTIONARY ETYMOLOGY FOR {word} ===\n{wikietym}")
+
+###############################################
+#  MAIN — READ WORDS FROM fileone.txt         #
+###############################################
+
+def main():
+    try:
+        with open("fileone.txt", "r", encoding="utf-8") as f:
+            words = [line.strip() for line in f if line.strip()]
+    except FileNotFoundError:
+        print("❌ ERROR: fileone.txt not found.")
+        sys.exit(1)
+
+    print(f"\nLoaded {len(words)} Greek words from fileone.txt\n")
+
+    for w in words:
+        process_word(w)
+
+if __name__ == "__main__":
+    main()
 
 
 import requests
