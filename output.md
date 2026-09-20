@@ -1,4 +1,101 @@
 
+
+
+import requests
+from bs4 import BeautifulSoup
+import re
+import unicodedata
+
+def normalize_greek(text):
+    return unicodedata.normalize("NFC", text)
+
+def getbaillyentry(word):
+    url = f"https://logeion.uchicago.edu/{word}"
+    response = requests.get(url)
+    if response.status_code != 200:
+        return None
+    soup = BeautifulSoup(response.text, "html.parser")
+    bailly_header = soup.find("h3", string=lambda s: s and "Bailly 2024" in s)
+    if not bailly_header:
+        return None
+    baillydiv = baillyheader.find_next("div")
+    if not bailly_div:
+        return None
+    return baillydiv.gettext(separator="\n").strip()
+
+def extractgreekfrometym(baillytext):
+    greek_words = set()
+    etymmatch = re.search(r"Etym\.(.*?)(?:\n[A-Z]|$)", baillytext, re.S)
+    if not etym_match:
+        return greek_words
+    etymtext = etymmatch.group(1)
+    greek_pattern = r"[ἀ-῾Α-Ωα-ω]+"
+    for w in re.findall(greekpattern, etymtext):
+        greekwords.add(normalizegreek(w))
+    return greek_words
+
+def getwiktionaryetymology(word):
+    url = f"https://en.wiktionary.org/wiki/{word}"
+    response = requests.get(url)
+    if response.status_code != 200:
+        return None
+    soup = BeautifulSoup(response.text, "html.parser")
+    etym_text = ""
+    inancientgreek = False
+    in_etymology = False
+    for tag in soup.find_all(["h2", "h3"]):
+        if tag.name == "h2" and "Ancient Greek" in tag.get_text():
+            inancientgreek = True
+            continue
+        if inancientgreek and tag.name == "h3" and "Etymology" in tag.get_text():
+            in_etymology = True
+            continue
+        if inancientgreek and in_etymology:
+            if tag.name in ["h2", "h3"]:
+                break
+            nextnode = tag.findnext_sibling()
+            if next_node:
+                etymtext += nextnode.get_text(separator="\n")
+    return etymtext.strip() if etymtext else None
+
+def appendtofile(text, filename="filebailly.txt"):
+    with open(filename, "a", encoding="utf-8") as f:
+        f.write(text + "\n\n")
+
+visited = set()
+
+def process_word(word):
+    word = normalize_greek(word)
+    if word in visited:
+        return
+    visited.add(word)
+    print(f"Processing: {word}")
+    bailly = getbaillyentry(word)
+    if bailly:
+        appendtofile(f"=== BAILLY 2024 ENTRY FOR {word} ===\n{bailly}")
+        greekwords = extractgreekfrometym(bailly)
+        for g in greek_words:
+            process_word(g)
+    wikietym = getwiktionaryetymology(word)
+    if wikietym:
+        appendtofile(f"=== WIKTIONARY ETYMOLOGY FOR {word} ===\n{wikietym}")
+
+def main():
+    words = input("Enter Greek words separated by spaces: ").strip().split()
+    for w in words:
+        process_word(w)
+
+if name == "main":
+    main()
+
+
+
+
+
+
+
+
+
 1
 
 Interea medium Aeneas
